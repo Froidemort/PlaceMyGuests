@@ -1,6 +1,7 @@
 import sys
 from PyQt4 import QtCore, QtGui
 from math import cos, sin, pi
+from collections import OrderedDict as ordict
 
 class GParam:
     # General parameters for graphicsScene object
@@ -18,15 +19,15 @@ class GParam:
     dict_map_color_gender = {'M': QtCore.Qt.blue,
                              'F': QtCore.Qt.red,
                              'C': QtCore.Qt.green}
-    #Parameters for table graphics
-    X_table = -150./2.
-    Y_table = -150./2.
+    # Parameters for table graphics
     W_table = 150.
     H_table = 150.
+    X_table = -W_table / 2.
+    Y_table = -H_table / 2.
 
 
 class GraphicGuest(QtGui.QGraphicsItemGroup):
-    def __init__(self, data=[u'', u'', u'']):
+    def __init__(self, data=['', '', '']):
         QtGui.QGraphicsItemGroup.__init__(self)
         self.rect = QtGui.QGraphicsRectItem()
         self.text_name = QtGui.QGraphicsSimpleTextItem()
@@ -90,13 +91,13 @@ class GraphicsTable(QtGui.QGraphicsItemGroup):
         self.set_text(self.name)
         for i in range(self.n_guest):
             g = GraphicGuest()
-            g.setPos((GParam.W_table/2. + GParam.W_rect/2. +5.)*cos(2*i*pi/self.n_guest),
-                     (GParam.H_table/2. + GParam.H_rect/2. +5.)*sin(2*i*pi/self.n_guest))
+            g.setPos((GParam.W_table / 2. + GParam.W_rect / 2. + 5.) * cos(2 * i * pi / self.n_guest),
+                     (GParam.H_table / 2. + GParam.H_rect / 2. + 5.) * sin(2 * i * pi / self.n_guest))
             g.setRotation(360. * i / self.n_guest)
             self.addToGroup(g)
         self.addToGroup(self.round)
         self.addToGroup(self.text)
-        self.setFlags(QtGui.QGraphicsItem.ItemIsMovable)
+        self.setFlags(QtGui.QGraphicsItem.ItemIsMovable | QtGui.QGraphicsItem.ItemIsSelectable)
 
     def set_void_table(self):
         pen = QtGui.QPen()
@@ -160,7 +161,32 @@ class TableModel(QtGui.QStandardItemModel):
     def __init__(self, scene, parent=None):
         QtGui.QStandardItemModel.__init__(self, parent)
         self.scene = scene
-        self._data = []
+        self._data = ordict()
+        self._data['root'] = ordict()
+        self._placed_guest = []
+
+    @staticmethod
+    def get_graphics_to_data(l_in):
+        return None
+
+    @staticmethod
+    def _check_void_guest(self, l_in):
+        return all([i=='' for i in l_in])
+
+    @staticmethod
+    def _check_and_store(arg, l_out):
+        if arg:
+            l_out.append(QtGui.QStandardItem(arg))
+        else:
+            l_out.append(QtGui.QStandardItem())
+
+    def add_table(self, name, n_guest):
+        l_out = []
+        self._check_and_store(name, l_out)
+        self._check_and_store(n_guest, l_out)
+        item = QtGui.QStandardItem(l_out[0])
+        [item.appendRow([QtGui.QStandardItem('') for _ in range(3)]) for _ in range(n_guest)]
+        self.appendRow([item, l_out[1]])
 
 
 class TempWidget(QtGui.QWidget):
@@ -206,6 +232,7 @@ class TempWidget(QtGui.QWidget):
         if ok:
             t = GraphicsTable([name, n_guest])
             self.scene.addItem(t)
+            self.table_model.add_table(name, n_guest)
 
 
 class NewTable(QtGui.QDialog):
