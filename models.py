@@ -1,7 +1,8 @@
-import sys
+import sys, pickle
 from PyQt4 import QtCore, QtGui
 from math import cos, sin, pi
 from collections import OrderedDict as ordict
+
 
 class GParam:
     # General parameters for graphicsScene object
@@ -24,6 +25,7 @@ class GParam:
     H_table = 150.
     X_table = -W_table / 2.
     Y_table = -H_table / 2.
+    delta_chair = 5.
 
 
 class GraphicGuest(QtGui.QGraphicsItemGroup):
@@ -91,13 +93,20 @@ class GraphicsTable(QtGui.QGraphicsItemGroup):
         self.set_text(self.name)
         for i in range(self.n_guest):
             g = GraphicGuest()
-            g.setPos((GParam.W_table / 2. + GParam.W_rect / 2. + 5.) * cos(2 * i * pi / self.n_guest),
-                     (GParam.H_table / 2. + GParam.H_rect / 2. + 5.) * sin(2 * i * pi / self.n_guest))
+            g.setPos((GParam.W_table / 2. + GParam.W_rect / 2.
+                      + GParam.delta_chair)
+                     * cos(2 * i * pi / self.n_guest),
+                     (GParam.H_table / 2. + GParam.H_rect / 2.
+                      + GParam.delta_chair)
+                     * sin(2 * i * pi / self.n_guest))
             g.setRotation(360. * i / self.n_guest)
             self.addToGroup(g)
         self.addToGroup(self.round)
         self.addToGroup(self.text)
-        self.setFlags(QtGui.QGraphicsItem.ItemIsMovable | QtGui.QGraphicsItem.ItemIsSelectable)
+        # self.setAcceptHoverEvents(True)
+        self.setFlags(QtGui.QGraphicsItem.ItemIsMovable |
+                      QtGui.QGraphicsItem.ItemIsSelectable)  # |
+                      # QtGui.QGraphicsItem.ItemSendsScenePositionChanges)
 
     def set_void_table(self):
         pen = QtGui.QPen()
@@ -110,6 +119,12 @@ class GraphicsTable(QtGui.QGraphicsItemGroup):
         self.round.setPen(pen)
         self.text.setText(name)
 
+    # def itemChange(self, change, value):
+    #     if change == QtGui.QGraphicsItem.ItemScenePositionHasChanged:
+    #         pos = value.toPoint()
+    #         print pos.x(), pos.y()
+    #     return super(GraphicsTable, self).itemChange(change, value)
+
 
 class GuestModel(QtGui.QStandardItemModel):
     def __init__(self, scene, parent=None):
@@ -117,6 +132,7 @@ class GuestModel(QtGui.QStandardItemModel):
         self.scene = scene
         self._data = []
         self.itemChanged.connect(self._has_changed)
+        self.setSupportedDragActions(QtCore.Qt.MoveAction)
 
     @staticmethod
     def get_data_to_graphics(l_in):
@@ -162,7 +178,6 @@ class TableModel(QtGui.QStandardItemModel):
         QtGui.QStandardItemModel.__init__(self, parent)
         self.scene = scene
         self._data = ordict()
-        self._data['root'] = ordict()
         self._placed_guest = []
 
     @staticmethod
@@ -170,8 +185,8 @@ class TableModel(QtGui.QStandardItemModel):
         return None
 
     @staticmethod
-    def _check_void_guest(self, l_in):
-        return all([i=='' for i in l_in])
+    def _check_void_guest(l_in):
+        return all([i == '' for i in l_in])
 
     @staticmethod
     def _check_and_store(arg, l_out):
@@ -180,18 +195,107 @@ class TableModel(QtGui.QStandardItemModel):
         else:
             l_out.append(QtGui.QStandardItem())
 
+    def get_table(self, name):
+        for key in self._data.keys():
+            if key == name:
+                return self._data[name]
+        return None
+
+    def rename_table(self, old_name, name):
+        result = self.get_table(old_name)
+        if result:
+            self._data[name] = self._data[old_name]
+            del self._data[old_name]
+
     def add_table(self, name, n_guest):
-        l_out = []
-        self._check_and_store(name, l_out)
-        self._check_and_store(n_guest, l_out)
-        item = QtGui.QStandardItem(l_out[0])
-        [item.appendRow([QtGui.QStandardItem('') for _ in range(3)]) for _ in range(n_guest)]
-        self.appendRow([item, l_out[1]])
+        if name not in self._data.keys():
+            l_out = []
+            self._check_and_store(name, l_out)
+            self._check_and_store(n_guest, l_out)
+            item = QtGui.QStandardItem(l_out[0])
+            [item.appendRow([QtGui.QStandardItem('')
+                             for _ in range(3)])
+             for _ in range(n_guest)]
+            self.appendRow([item, l_out[1]])
+            self._data[name] = [n_guest, [['']*3 for _ in range(n_guest)]]
+
+
+class MyScene(QtGui.QGraphicsScene):
+    def __init__(self, *args):
+        QtGui.QGraphicsScene.__init__(self, *args)
+
+
+    def get_parent(self, item):
+        print type(item), 'from',
+        if item.parentItem():
+            parent = item.parentItem()
+            self.get_parent(parent)
+        else:
+            print "MyScene"
+
+    def mousePressEvent(self, event):
+        if event.buttons() == QtCore.Qt.RightButton:
+            print event.scenePos().x(), event.scenePos().y()
+            if self.itemAt(event.scenePos()):
+                print 'Item found !'
+                g_g = self.itemAt(event.scenePos())
+                self.get_parent(g_g)
+                g_g.setSelected(True)
+            else:
+                print 'Nothing found !'
+        super(MyScene, self).mousePressEvent(event)
+
+    def dragEnterEvent(self, event):
+        print 'Enter in the widget MyScene'
+
+
+    def dragMoveEvent(self, event):
+        print 'Moving in the widget MyScene'
+
+    def dragLeaveEvent(self, event):
+        print 'Leaving in the widget MyScene'
+
+    def dropEvent(self, event):
+        print 'Dropping...'
+        print event.mimeData().data('text/plain')
+
+
+class MyView(QtGui.QGraphicsView):
+    def __init__(self, *args):
+        QtGui.QGraphicsView.__init__(self, *args)
+        self.setAcceptDrops(True)
+
+
+class CustomView(QtGui.QTableView):
+    def __init__(self, parent=None):
+        QtGui.QTableView.__init__(self, parent)
+        self.setDragEnabled(True)
+        # Graphical customization
+
+    def startDrag(self, event):
+        index = self.indexAt(event.pos())
+        if not index.isValid():
+            return
+        ## selected is the relevant person object
+        print index.row()
+        selected = [self.model().index(index.row(), i).data().toString() for i in range(3)]
+        print selected
+        # ## convert to  a bytestream
+        # bstream = pickle.dumps(selected)
+        # mimeData = QtCore.QMimeData()
+        # mimeData.setData("application/x-person", bstream)
+        #
+        # drag = QtGui.QDrag(self)
+        # drag.setMimeData(mimeData)
+
+    def mouseMoveEvent(self, event):
+        self.startDrag(event)
 
 
 class TempWidget(QtGui.QWidget):
     def __init__(self, parent=None):
         QtGui.QWidget.__init__(self, parent)
+        # Definition of the layouts
         h_layout = QtGui.QHBoxLayout()
         v_layout = QtGui.QVBoxLayout()
         main_layout = QtGui.QHBoxLayout()
@@ -202,12 +306,15 @@ class TempWidget(QtGui.QWidget):
         self.btn_add_table.clicked.connect(self.add_table)
         self.led = QtGui.QLineEdit()
         # Definition of the views
-        self.table_view = QtGui.QTableView()
-        self.graphic_view = QtGui.QGraphicsView()
-        self.graphic_view.setAcceptDrops(True)
+        self.graphic_view = MyView()
+        self.table_view = CustomView()
+        # Definition of selection mode, behavior and drag and drop mode.
+        self.table_view.setSelectionBehavior(QtGui.QTableView.SelectRows)
+        self.table_view.setSelectionMode(QtGui.QTableView.SingleSelection)
+        self.table_view.setDragDropMode(QtGui.QTableView.DragOnly)
         # Definition of the models
-        self.scene = QtGui.QGraphicsScene(GParam.X_origin, GParam.Y_origin,
-                                          GParam.W_scene, GParam.H_scene)
+        self.scene = MyScene(GParam.X_origin, GParam.Y_origin,
+                             GParam.W_scene, GParam.H_scene)
         self.guest_model = GuestModel(self.scene)
         self.table_model = TableModel(self.scene)
         # Linking model to view
@@ -239,7 +346,9 @@ class NewTable(QtGui.QDialog):
     def __init__(self, parent=None):
         QtGui.QDialog.__init__(self, parent)
         layout = QtGui.QVBoxLayout(self)
+        self.lab_name = QtGui.QLabel('Name of the table')
         self.led = QtGui.QLineEdit()
+        self.lab_n_guest = QtGui.QLabel('Number of guest around the table')
         self.cbx = QtGui.QComboBox()
         self.cbx.addItems(['10', '12'])
         btn = QtGui.QDialogButtonBox(QtGui.QDialogButtonBox.Ok |
@@ -247,7 +356,9 @@ class NewTable(QtGui.QDialog):
                                      QtCore.Qt.Horizontal, self)
         btn.accepted.connect(self.accept)
         btn.rejected.connect(self.reject)
+        layout.addWidget(self.lab_name)
         layout.addWidget(self.led)
+        layout.addWidget(self.lab_n_guest)
         layout.addWidget(self.cbx)
         layout.addWidget(btn)
 
