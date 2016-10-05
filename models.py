@@ -1,15 +1,16 @@
-import sys, pickle
-from PyQt4 import QtCore, QtGui
+import pickle
+import sys
 from math import cos, sin, pi
-from collections import OrderedDict as ordict
+from PyQt4 import QtCore, QtGui
 
 
 class GParam:
     # General parameters for graphicsScene object
     X_origin = 0.
     Y_origin = 0.
-    W_scene = 1024.
-    H_scene = 1024.
+    W_scene = 2000.
+    H_scene = 2000.
+    rect_scene = QtCore.QRectF(X_origin, Y_origin, W_scene, H_scene)
     # Parameters for guest graphics
     W_rect = 25.
     H_rect = 25.
@@ -26,16 +27,18 @@ class GParam:
     X_table = -W_table / 2.
     Y_table = -H_table / 2.
     delta_chair = 5.
-    W_tot_table = 2. * ( W_rect + delta_chair) + W_table
-    H_tot_table = 2. * ( H_rect + delta_chair) + H_table
+    W_tot_table = 2. * (W_rect + delta_chair) + W_table
+    H_tot_table = 2. * (H_rect + delta_chair) + H_table
 
     def __init__(self):
         pass
 
 
 class GraphicGuest(QtGui.QGraphicsItemGroup):
-    def __init__(self, data=['', '', '']):
+    def __init__(self, data=None):
         QtGui.QGraphicsItemGroup.__init__(self)
+        if data is None:
+            data = ['', '', '']
         self.rect = QtGui.QGraphicsRectItem()
         self.text_name = QtGui.QGraphicsSimpleTextItem()
         self.text_surname = QtGui.QGraphicsSimpleTextItem()
@@ -105,7 +108,6 @@ class GraphicsTable(QtGui.QGraphicsItemGroup):
         self.setFlags(QtGui.QGraphicsItem.ItemIsMovable |
                       QtGui.QGraphicsItem.ItemIsSelectable)  # |
         # QtGui.QGraphicsItem.ItemSendsScenePositionChanges)
-        self.reset_guest(5)
 
     def get_i_from_item(self, item):
         for item_ in self._data:
@@ -145,6 +147,7 @@ class GraphicsTable(QtGui.QGraphicsItemGroup):
     def reset_guest(self, i):
         self.remove_guest(i)
         self.set_guest_to_table(GraphicGuest(), i)
+
 
 class GuestModel(QtGui.QStandardItemModel):
     def __init__(self, scene, parent=None):
@@ -193,27 +196,15 @@ class GuestModel(QtGui.QStandardItemModel):
             self._data[item.row()][3].set_void_guest()
 
 
-class TableModel(QtGui.QStandardItemModel):
-    def __init__(self, scene, parent=None):
-        QtGui.QStandardItemModel.__init__(self, parent)
-        self.scene = scene
-        self._data = ordict()
+class TableModel(QtCore.QObject):
+    def __init__(self, parent=None):
+        QtCore.QObject.__init__(self, parent)
+        self._data = dict()
         self._placed_guest = []
-
-    @staticmethod
-    def get_graphics_to_data(l_in):
-        return None
 
     @staticmethod
     def _check_void_guest(l_in):
         return all([i == '' for i in l_in])
-
-    @staticmethod
-    def _check_and_store(arg, l_out):
-        if arg:
-            l_out.append(QtGui.QStandardItem(arg))
-        else:
-            l_out.append(QtGui.QStandardItem())
 
     def get_table(self, name):
         for key in self._data.keys():
@@ -227,24 +218,15 @@ class TableModel(QtGui.QStandardItemModel):
             self._data[name] = self._data[old_name]
             del self._data[old_name]
 
-    def add_table(self, name, n_guest):
-        if name not in self._data.keys():
-            l_out = []
-            self._check_and_store(name, l_out)
-            self._check_and_store(n_guest, l_out)
-            item = QtGui.QStandardItem(l_out[0])
-            [item.appendRow([QtGui.QStandardItem('')
-                             for _ in range(3)])
-             for _ in range(n_guest)]
-            self.appendRow([item, l_out[1]])
-            self._data[name] = [n_guest, [[''] * 3 for _ in range(n_guest)]]
+    def add_table(self, table):
+        if table.name not in [t.name for t in self._data.keys()]:
+            self._data[table] = [table.n_guest, [[''] * 3 for _ in range(table.n_guest)]]
 
 
 class MyScene(QtGui.QGraphicsScene):
     def __init__(self, x, y, w, h):
         QtGui.QGraphicsScene.__init__(self, x, y, w, h)
         self.group = QtGui.QGraphicsItemGroup()
-        # print x, y, w, h
         pen = QtGui.QPen(QtCore.Qt.gray)
         for x_grid in xrange(0, int(w), int(GParam.W_tot_table)):
             for y_grid in xrange(0, int(h), int(GParam.H_tot_table)):
@@ -256,10 +238,8 @@ class MyScene(QtGui.QGraphicsScene):
                 l_v.setPen(pen)
                 self.group.addToGroup(l_h)
                 self.group.addToGroup(l_v)
-                # for y_grid in xrange(100, int(h), 100):
-                #     print 'adding', y_grid
-                #     self.addLine(x, float(y_grid), x, h)
         self.addItem(self.group)
+        self.data_table = TableModel()
 
     def get_parent(self, item):
         print type(item), 'from',
@@ -268,6 +248,13 @@ class MyScene(QtGui.QGraphicsScene):
             self.get_parent(parent)
         else:
             print "MyScene"
+
+    def keyPressEvent(self, event):
+        if event.key() == QtCore.Qt.Key_A and event.modifiers() == QtCore.Qt.ControlModifier:
+            for item in self.items():
+                item.setSelected(True)
+        if event.key() == QtCore.Qt.Key_Delete:
+            print 'Deleting objects...'
 
     def mousePressEvent(self, event):
         if event.buttons() == QtCore.Qt.RightButton:
@@ -303,7 +290,7 @@ class MyScene(QtGui.QGraphicsScene):
                 b_stream = data.retrieveData("application/x-person",
                                              QtCore.QVariant.ByteArray)
                 selected = pickle.loads(b_stream.toByteArray())
-                print 'RECU :', selected, event.scenePos().x(), event.scenePos().y()
+                print 'RECEIVED :', selected, event.scenePos().x(), event.scenePos().y()
                 g = GraphicGuest()
                 g.set_text_name(selected[0])
                 g.set_text_surname(selected[1])
@@ -322,6 +309,24 @@ class MyView(QtGui.QGraphicsView):
     def __init__(self, *args):
         QtGui.QGraphicsView.__init__(self, *args)
         self.setAcceptDrops(True)
+        self._zoom = 0
+
+    def wheelEvent(self, event):
+        if event.modifiers() == QtCore.Qt.ControlModifier:
+            if event.delta() > 0:
+                factor = 1.25
+                self._zoom += 1
+            else:
+                factor = 0.8
+                self._zoom -= 1
+            if self._zoom > 0:
+                self.scale(factor, factor)
+            elif self._zoom == 0:
+                self.fitInView(GParam.rect_scene)
+            else:
+                self._zoom = 0
+        elif event.modifiers() == QtCore.Qt.NoModifier:
+            super(MyView, self).wheelEvent(event)
 
 
 class CustomView(QtGui.QTableView):
@@ -339,16 +344,16 @@ class CustomView(QtGui.QTableView):
         index = self.indexAt(event.pos())
         if not index.isValid():
             return
-        ## selected is the relevant person object
+        # selected is the relevant person object
         print index.row()
         selected = [self.model().index(index.row(), i).data().toString() for i
                     in range(3)]
-        print 'EMIS :', selected
-        # ## convert to  a bytestream
+        print 'EMITTED :', selected
+        # convert to  a bytestream
         b_stream = pickle.dumps(selected)
         mime_data = QtCore.QMimeData()
         mime_data.setData("application/x-person", b_stream)
-        #
+        # create the drag object
         drag = QtGui.QDrag(self)
         drag.setMimeData(mime_data)
         drag.start(QtCore.Qt.MoveAction)
@@ -378,9 +383,9 @@ class TempWidget(QtGui.QWidget):
         self.scene = MyScene(GParam.X_origin, GParam.Y_origin,
                              GParam.W_scene, GParam.H_scene)
         self.guest_model = GuestModel(self.scene)
-        self.table_model = TableModel(self.scene)
         # Linking model to view
         self.graphic_view.setScene(self.scene)
+        self.graphic_view.fitInView(GParam.rect_scene)
         self.table_view.setModel(self.guest_model)
         # Adding elements to the layout
         h_layout.addWidget(self.btn_add_guest)
@@ -403,7 +408,7 @@ class TempWidget(QtGui.QWidget):
             if name and ok == QtGui.QDialog.Accepted:
                 t = GraphicsTable([name, n_guest])
                 self.scene.addItem(t)
-                self.table_model.add_table(name, n_guest)
+                self.scene.data_table.add_table(t)
             elif ok == QtGui.QDialog.Rejected:
                 break
             elif not name:
@@ -414,6 +419,9 @@ class NewTable(QtGui.QDialog):
     def __init__(self, parent=None):
         QtGui.QDialog.__init__(self, parent)
         layout = QtGui.QVBoxLayout(self)
+        self.setWindowTitle('New table...')
+        self.setWindowFlags(QtCore.Qt.WindowTitleHint | QtCore.Qt.WindowCloseButtonHint)
+        self.setWindowIcon(QtGui.QIcon())
         self.lab_name = QtGui.QLabel('Name of the table')
         self.led = QtGui.QLineEdit()
         self.lab_n_guest = QtGui.QLabel('Number of guest around the table')
@@ -440,9 +448,7 @@ class NewTable(QtGui.QDialog):
     def get_result():
         dialog = NewTable()
         result = dialog.exec_()
-        return dialog.get_name(), \
-               dialog.get_n_guest(), \
-               result
+        return dialog.get_name(), dialog.get_n_guest(), result
 
 
 def display_error(message):
