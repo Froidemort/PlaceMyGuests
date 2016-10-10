@@ -49,7 +49,7 @@ class GParam:
 
 
 class GraphicGuest(QtGui.QGraphicsItemGroup):
-    def __init__(self, name=None, surname=None, gender=None):
+    def __init__(self, name='', surname='', gender=''):
         QtGui.QGraphicsItemGroup.__init__(self)
         self.gender = gender
         self.rect = QtGui.QGraphicsRectItem()
@@ -62,19 +62,10 @@ class GraphicGuest(QtGui.QGraphicsItemGroup):
         self.text_name.setPos(GParam.X_rect, -GParam.Y_rect)
         self.text_surname.setPos(GParam.X_rect, -GParam.Y_rect + 10.)
         # Initialization with data :
-        if name is None:
-            self.set_text_name('')
-        else:
-            self.set_text_name(name)
-        if surname is None:
-            self.set_text_surname('')
-        else:
-            self.set_text_surname(surname)
-        if gender is None:
-            self.set_color_gender('')
-        else:
-            self.set_color_gender(gender)
         self.set_void_guest()
+        self.set_text_name(name)
+        self.set_text_surname(surname)
+        self.set_color_gender(gender)
         # Grouping elements
         self.addToGroup(self.rect)
         self.addToGroup(self.text_name)
@@ -92,7 +83,7 @@ class GraphicGuest(QtGui.QGraphicsItemGroup):
             self.rect.setPen(pen)
 
     def set_text_name(self, name):
-        if name:
+        if name != '':
             self.set_void_guest(False)
         self.text_name.setText(name)
 
